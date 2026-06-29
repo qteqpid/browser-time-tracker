@@ -16,7 +16,68 @@
 [![Local first](https://img.shields.io/badge/Data-local%20first-brightgreen.svg)](#隐私和数据)
 [![Browsers](https://img.shields.io/badge/Chrome%20%7C%20Safari%20%7C%20Edge%20%7C%20Firefox-supported-blueviolet.svg)](#支持浏览器)
 
+**[中文](#快速开始) · [English](#english)**
+
 </div>
+
+<details>
+<summary id="english"><strong>English</strong></summary>
+
+# Browser Time Tracker
+
+A local-first macOS menu bar app that tracks how much time you spend on websites and pages.
+
+Website and download page:
+
+```text
+https://qteqpid.github.io/app-web/browser-time-tracker/index.html
+```
+
+## Install
+
+1. Download `BrowserTimeTracker.dmg` from the website or the latest GitHub Release.
+2. Open the DMG.
+3. Drag `Browser Time Tracker.app` into `Applications`.
+4. Open the app from `Applications`.
+5. Click the hourglass icon in the menu bar and choose `Open Dashboard`.
+
+## Features
+
+| | |
+|---|---|
+| **Website tracking** | Track time by website domain |
+| **Page tracking** | Track time by page title and URL |
+| **Daily chart** | Review the last 7 days |
+| **Hourly chart** | Drill into a selected day by hour |
+| **Menu bar app** | Open Dashboard, pause, clear data, or quit |
+| **Automatic pause** | Pauses during sleep, screen lock, or unsupported foreground apps |
+| **Admin Lock** | Protect Pause, Clear Data, and Quit with administrator authentication |
+| **Local storage** | Data is stored locally in SQLite and retained for 7 days |
+
+## Permissions
+
+Chrome, Safari, and Edge use Automation permission. Firefox uses Accessibility permission.
+
+## Local data
+
+```text
+~/Library/Application Support/BrowserTimeTracker/browser_time.sqlite
+```
+
+## Build from source
+
+```bash
+cd mac-menubar
+swift run BrowserTimeMenubar
+```
+
+Package DMG:
+
+```bash
+NOTARY_PROFILE="btt-notary" ./scripts/package-dmg.sh
+```
+
+</details>
 
 ## 快速开始
 
@@ -256,67 +317,6 @@ xcrun notarytool store-credentials "btt-notary" \
 ```
 
 之后打包时传入：
-
-```bash
-NOTARY_PROFILE="btt-notary" ./scripts/package-dmg.sh
-```
-
-</details>
-
----
-
-<details>
-<summary><strong>English</strong></summary>
-
-# Browser Time Tracker
-
-A local-first macOS menu bar app that tracks how much time you spend on websites and pages.
-
-Website and download page:
-
-```text
-https://qteqpid.github.io/app-web/browser-time-tracker/index.html
-```
-
-## Install
-
-1. Download `BrowserTimeTracker.dmg` from the website or the latest GitHub Release.
-2. Open the DMG.
-3. Drag `Browser Time Tracker.app` into `Applications`.
-4. Open the app from `Applications`.
-5. Click the hourglass icon in the menu bar and choose `Open Dashboard`.
-
-## Features
-
-| | |
-|---|---|
-| **Website tracking** | Track time by website domain |
-| **Page tracking** | Track time by page title and URL |
-| **Daily chart** | Review the last 7 days |
-| **Hourly chart** | Drill into a selected day by hour |
-| **Menu bar app** | Open Dashboard, pause, clear data, or quit |
-| **Automatic pause** | Pauses during sleep, screen lock, or unsupported foreground apps |
-| **Admin Lock** | Protect Pause, Clear Data, and Quit with administrator authentication |
-| **Local storage** | Data is stored locally in SQLite and retained for 7 days |
-
-## Permissions
-
-Chrome, Safari, and Edge use Automation permission. Firefox uses Accessibility permission.
-
-## Local data
-
-```text
-~/Library/Application Support/BrowserTimeTracker/browser_time.sqlite
-```
-
-## Build from source
-
-```bash
-cd mac-menubar
-swift run BrowserTimeMenubar
-```
-
-Package DMG:
 
 ```bash
 NOTARY_PROFILE="btt-notary" ./scripts/package-dmg.sh
