@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# Build outputs
+dist/
+DerivedData/
+.build/
+mac-menubar/.build/
+
+# SwiftPM / Xcode local state
+.swiftpm/
+.swiftpm/xcode/xcuserdata/
+*.xcuserstate
+xcuserdata/
+
+# Xcode archives and packages
+*.xcarchive
+*.dmg
+*.pkg
+*.ipa
+*.app
+*.dSYM
+
+# Local app data
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# Signing credentials and provisioning profiles
+*.cer
+*.p12
+*.mobileprovision
+*.provisionprofile
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp

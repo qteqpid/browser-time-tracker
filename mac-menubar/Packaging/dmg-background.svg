@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380" viewBox="0 0 640 380">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbfcf8"/>
+      <stop offset="1" stop-color="#eef4ef"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#263023" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+  <rect width="640" height="380" fill="url(#bg)"/>
+  <path d="M0 0H640V380H0Z" fill="none"/>
+  <g opacity="0.28" stroke="#263023" stroke-width="1">
+    <path d="M0 48H640M0 96H640M0 144H640M0 192H640M0 240H640M0 288H640M0 336H640"/>
+    <path d="M64 0V380M128 0V380M192 0V380M256 0V380M320 0V380M384 0V380M448 0V380M512 0V380M576 0V380"/>
+  </g>
+  <text x="320" y="58" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Avenir Next, sans-serif" font-size="24" font-weight="700" fill="#20231f">Browser Time Tracker</text>
+  <text x="320" y="86" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Avenir Next, sans-serif" font-size="13" font-weight="500" fill="#6d756c">Drag the app into Applications to install</text>
+  <g filter="url(#shadow)">
+    <rect x="116" y="135" width="128" height="128" rx="28" fill="#ffffff" stroke="#dbe3d8"/>
+    <path d="M180 172c-28 0-51 20-51 45 0 24 23 44 51 44s51-20 51-44c0-25-23-45-51-45Zm0 16c18 0 33 13 33 29 0 15-15 28-33 28s-33-13-33-28c0-16 15-29 33-29Z" fill="#0f766e"/>
+    <path d="M180 198v21l16 10" fill="none" stroke="#20231f" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="396" y="135" width="128" height="128" rx="28" fill="#ffffff" stroke="#dbe3d8"/>
+    <path d="M432 233h56l-28-50-28 50Z" fill="#1a73e8"/>
+    <path d="M430 233h60" stroke="#20231f" stroke-width="10" stroke-linecap="round"/>
+    <path d="M460 183l25 44M460 183l-25 44" stroke="#20231f" stroke-width="10" stroke-linecap="round"/>
+  </g>
+  <path d="M278 199h84" stroke="#0f766e" stroke-width="10" stroke-linecap="round"/>
+  <path d="M346 174l32 30-32 30" fill="none" stroke="#0f766e" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="180" y="296" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Avenir Next, sans-serif" font-size="13" font-weight="700" fill="#20231f">Browser Time Tracker</text>
+  <text x="460" y="296" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Avenir Next, sans-serif" font-size="13" font-weight="700" fill="#20231f">Applications</text>
+</svg>
