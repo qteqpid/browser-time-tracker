@@ -15,7 +15,6 @@ xcuserdata/
 
 # Xcode archives and packages
 *.xcarchive
-*.dmg
 *.pkg
 *.ipa
 *.app
