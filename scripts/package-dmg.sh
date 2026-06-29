@@ -14,37 +14,66 @@ DMG_ROOT="$DIST_DIR/dmg-root"
 DMG_PATH="$DIST_DIR/BrowserTimeTracker.dmg"
 RW_DMG_PATH="$DIST_DIR/BrowserTimeTracker-rw.dmg"
 DMG_BACKGROUND_SVG="$PACKAGING_DIR/dmg-background.svg"
+ENTITLEMENTS="$PACKAGING_DIR/entitlements.plist"
 SKIP_SIGNING="${SKIP_SIGNING:-0}"
 DEVELOPER_ID="${DEVELOPER_ID:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$DIST_DIR/DerivedData}"
+
+log_info() {
+  printf '[Info] %s\n' "$*"
+}
+
+log_error() {
+  printf '[Error] %s\n' "$*" >&2
+}
+
+log_info_block() {
+  sed 's/^/[Info] /'
+}
+
+log_error_block() {
+  sed 's/^/[Error] /' >&2
+}
 
 detect_developer_id() {
   security find-identity -v -p codesigning \
     | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p'
 }
 
+detach_existing_volume() {
+  local volume_path="/Volumes/$APP_NAME"
+  if [[ -e "$volume_path" ]]; then
+    log_info "Detaching existing mounted volume: $volume_path"
+    /usr/bin/hdiutil detach "$volume_path" -quiet >/dev/null 2>&1 || \
+      /usr/sbin/diskutil unmount force "$volume_path" >/dev/null 2>&1 || true
+  fi
+}
+
 if [[ "$SKIP_SIGNING" != "1" && -z "$DEVELOPER_ID" ]]; then
   developer_ids=("${(@f)$(detect_developer_id)}")
   if [[ "${#developer_ids[@]}" == "1" && -n "${developer_ids[1]}" ]]; then
     DEVELOPER_ID="${developer_ids[1]}"
-    echo "Using detected Developer ID: $DEVELOPER_ID"
+    log_info "Using detected Developer ID: $DEVELOPER_ID"
   elif [[ "${#developer_ids[@]}" == "0" || -z "${developer_ids[1]:-}" ]]; then
-    echo "No Developer ID Application certificate found in your keychain."
-    echo "Create one in Xcode: Settings -> Accounts -> Manage Certificates -> + -> Developer ID Application"
-    echo 'Then run: DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" ./scripts/package-dmg.sh'
+    log_error "No Developer ID Application certificate found in your keychain."
+    log_error "Create one in Xcode: Settings -> Accounts -> Manage Certificates -> + -> Developer ID Application"
+    log_error 'Then run: DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" ./scripts/package-dmg.sh'
     exit 1
   else
-    echo "Multiple Developer ID Application certificates found:"
-    printf '  %s\n' "${developer_ids[@]}"
-    echo 'Set the one to use explicitly, for example:'
-    echo 'DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" ./scripts/package-dmg.sh'
+    log_error "Multiple Developer ID Application certificates found:"
+    for developer_id in "${developer_ids[@]}"; do
+      log_error "  $developer_id"
+    done
+    log_error 'Set the one to use explicitly, for example:'
+    log_error 'DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" ./scripts/package-dmg.sh'
     exit 1
   fi
 fi
 
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
+detach_existing_volume
 
 xcodebuild_args=(
   -project "$PROJECT_PATH"
@@ -54,43 +83,50 @@ xcodebuild_args=(
   -derivedDataPath "$DERIVED_DATA_PATH"
   archive
   SKIP_INSTALL=NO
+  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGN_IDENTITY=""
 )
-
-if [[ "$SKIP_SIGNING" == "1" ]]; then
-  xcodebuild_args+=(CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="")
-fi
 
 /usr/bin/xcodebuild "${xcodebuild_args[@]}"
 
 if [[ ! -d "$APP_BUNDLE" ]]; then
-  echo "Xcode archive did not produce $APP_BUNDLE"
+  log_error "Xcode archive did not produce $APP_BUNDLE"
   exit 1
 fi
 
 if [[ "$SKIP_SIGNING" != "1" ]]; then
+  /usr/bin/codesign --force \
+    --deep \
+    --sign "$DEVELOPER_ID" \
+    --options runtime \
+    --timestamp \
+    --entitlements "$ENTITLEMENTS" \
+    "$APP_BUNDLE"
+
   /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 else
-  echo "Built unsigned app for local testing."
-fi
-
-mkdir -p "$DMG_ROOT"
-cp -R "$APP_BUNDLE" "$DMG_ROOT/"
-ln -s /Applications "$DMG_ROOT/Applications"
-mkdir -p "$DMG_ROOT/.background"
-if [[ -f "$DMG_BACKGROUND_SVG" ]]; then
-  cp "$DMG_BACKGROUND_SVG" "$DMG_ROOT/.background/background.svg"
-  /usr/bin/sips -s format png "$DMG_ROOT/.background/background.svg" --out "$DMG_ROOT/.background/background.png" >/dev/null 2>&1 || true
+  log_info "Built unsigned app for local testing."
 fi
 
 /usr/bin/hdiutil create \
   -volname "$APP_NAME" \
-  -srcfolder "$DMG_ROOT" \
+  -size 64m \
+  -type UDIF \
+  -fs HFS+ \
   -ov \
-  -format UDRW \
   "$RW_DMG_PATH"
 
-device=$(/usr/bin/hdiutil attach "$RW_DMG_PATH" -readwrite -noverify -noautoopen | awk '/\\/Volumes\\// {print $1; exit}')
-volume="/Volumes/$APP_NAME"
+attach_output=$(/usr/bin/hdiutil attach "$RW_DMG_PATH" -readwrite -noverify -noautoopen)
+device=$(echo "$attach_output" | awk '/^\/dev\// {print $1; exit}')
+if [[ -z "$device" ]]; then
+  log_error "Could not determine attached DMG device."
+  exit 1
+fi
+volume=$(echo "$attach_output" | awk 'index($0, "/Volumes/") {print substr($0, index($0, "/Volumes/")); exit}')
+if [[ -z "$volume" ]]; then
+  log_error "Could not determine mounted DMG volume."
+  exit 1
+fi
 
 cleanup_dmg_mount() {
   if [[ -n "${device:-}" ]]; then
@@ -99,30 +135,89 @@ cleanup_dmg_mount() {
 }
 trap cleanup_dmg_mount EXIT
 
-/usr/bin/osascript <<APPLESCRIPT
+/usr/bin/ditto "$APP_BUNDLE" "$volume/$APP_NAME.app"
+/bin/ln -s /Applications "$volume/Applications"
+/usr/bin/touch "$volume/$APP_NAME.app"
+/usr/bin/touch "$volume"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f "$volume/$APP_NAME.app" >/dev/null 2>&1 || true
+
+/usr/bin/open "$volume"
+sleep 1
+
+if ! layout_output=$(/usr/bin/osascript <<APPLESCRIPT 2>&1
 tell application "Finder"
-  tell disk "$APP_NAME"
-    open
-    set current view of container window to icon view
-    set toolbar visible of container window to false
-    set statusbar visible of container window to false
-    set bounds of container window to {120, 120, 760, 500}
-    set viewOptions to the icon view options of container window
+  set dmgDisk to disk "$APP_NAME"
+  open dmgDisk
+  delay 1
+
+  try
+    set dmgWindow to container window of dmgDisk
+  on error
+    try
+      set dmgWindow to front window
+    on error errorMessage
+      return "Skipped Finder layout: " & errorMessage
+    end try
+  end try
+
+  try
+    set current view of dmgWindow to icon view
+  end try
+  try
+    set toolbar visible of dmgWindow to false
+  end try
+  try
+    set statusbar visible of dmgWindow to false
+  end try
+  try
+    set bounds of dmgWindow to {120, 120, 760, 500}
+  end try
+  try
+    set viewOptions to the icon view options of dmgWindow
     set arrangement of viewOptions to not arranged
     set icon size of viewOptions to 112
     set text size of viewOptions to 13
-    try
-      set background picture of viewOptions to file ".background:background.png"
-    end try
-    set position of item "$APP_NAME.app" of container window to {180, 190}
-    set position of item "Applications" of container window to {460, 190}
-    close
-    open
-    update without registering applications
-    delay 1
-  end tell
+  end try
+  try
+    set position of item "$APP_NAME.app" of dmgWindow to {180, 190}
+  end try
+  try
+    set position of item "Applications" of dmgWindow to {460, 190}
+  end try
+  try
+    set position of item "$APP_NAME.app" of dmgDisk to {180, 190}
+  end try
+  try
+    set position of item "Applications" of dmgDisk to {460, 190}
+  end try
+  try
+    update dmgDisk without registering applications
+  end try
+  delay 3
+  try
+    close dmgWindow
+  end try
 end tell
 APPLESCRIPT
+); then
+  log_info "Warning: Finder DMG window layout step failed; continuing. $layout_output"
+elif [[ -n "$layout_output" ]]; then
+  log_info "$layout_output"
+fi
+
+for _ in {1..10}; do
+  if [[ -f "$volume/.DS_Store" ]]; then
+    break
+  fi
+  sleep 1
+done
+
+if [[ -f "$volume/.DS_Store" ]]; then
+  log_info "Configured Finder DMG window layout."
+else
+  log_info "Warning: Finder did not write .DS_Store; DMG window layout may not persist."
+fi
 
 /bin/sync
 /usr/bin/hdiutil detach "$device" -quiet
@@ -143,13 +238,30 @@ if [[ "$SKIP_SIGNING" != "1" ]]; then
     "$DMG_PATH"
 
   if [[ -n "$NOTARY_PROFILE" ]]; then
-    /usr/bin/xcrun notarytool submit "$DMG_PATH" \
+    if ! notary_output=$(/usr/bin/xcrun notarytool submit "$DMG_PATH" \
       --keychain-profile "$NOTARY_PROFILE" \
-      --wait
+      --wait 2>&1); then
+      echo "$notary_output" | log_error_block
+      submission_id=$(echo "$notary_output" | awk '/id:/ {print $2; exit}')
+      if [[ -n "$submission_id" ]]; then
+        /usr/bin/xcrun notarytool log "$submission_id" \
+          --keychain-profile "$NOTARY_PROFILE" || true
+      fi
+      exit 1
+    fi
+    echo "$notary_output" | log_info_block
+    if echo "$notary_output" | grep -q "status: Invalid"; then
+      submission_id=$(echo "$notary_output" | awk '/id:/ {print $2; exit}')
+      if [[ -n "$submission_id" ]]; then
+        /usr/bin/xcrun notarytool log "$submission_id" \
+          --keychain-profile "$NOTARY_PROFILE" || true
+      fi
+      exit 1
+    fi
     /usr/bin/xcrun stapler staple "$DMG_PATH"
   else
-    echo "NOTARY_PROFILE not set; skipping notarization."
+    log_info "NOTARY_PROFILE not set; skipping notarization."
   fi
 fi
 
-echo "Built: $DMG_PATH"
+log_info "Built: $DMG_PATH"

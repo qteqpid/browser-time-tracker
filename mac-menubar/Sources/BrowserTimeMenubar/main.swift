@@ -153,7 +153,8 @@ final class BrowserTimeStore {
             [end, start, start, end]
         )
         let selectedDate = Date(timeIntervalSince1970: start)
-        let colorDomains = colorDomainsUnlocked(endingAt: selectedDate)
+        let dashboardEndDate = Date()
+        let colorDomains = colorDomainsUnlocked(endingAt: dashboardEndDate)
         let colorDomainLabels = colorDomains.map(\.label)
 
         return TodaySummary(
@@ -162,7 +163,7 @@ final class BrowserTimeStore {
             pages: pages,
             colorDomains: colorDomains,
             hours: hourlyBucketsUnlocked(for: selectedDate, topDomains: colorDomainLabels),
-            days: dayBucketsUnlocked(endingAt: selectedDate, topDomains: colorDomainLabels),
+            days: dayBucketsUnlocked(endingAt: dashboardEndDate, topDomains: colorDomainLabels),
             windowLabel: windowLabel
         )
     }
@@ -1193,7 +1194,7 @@ private let dashboardHTML = """
       --accent-ink: #064e49;
       --control: #fbfcf8;
       --shadow: 0 16px 42px rgba(38, 48, 35, 0.09), 0 2px 7px rgba(38, 48, 35, 0.05);
-      font-family: "Avenir Next", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
     }
 
     * { box-sizing: border-box; }
@@ -1224,10 +1225,11 @@ private let dashboardHTML = """
     }
 
     h1 {
-      font-size: 28px;
-      line-height: 1;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+      font-size: 30px;
+      line-height: 1.08;
       margin: 0;
-      font-weight: 760;
+      font-weight: 700;
       letter-spacing: 0;
     }
 
@@ -1330,11 +1332,12 @@ private let dashboardHTML = """
     }
 
     .chart-title, h2 {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
       font-size: 12px;
       margin: 0 0 14px;
       color: var(--muted);
-      font-weight: 760;
-      letter-spacing: 0.08em;
+      font-weight: 700;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
     }
 
