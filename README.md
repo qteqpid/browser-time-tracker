@@ -35,7 +35,8 @@ https://qteqpid.github.io/app-web/browser-time-tracker/index.html
 
 ## Install
 
-1. Download `BrowserTimeTracker.dmg` from the website or the latest GitHub Release.
+1. Download `BrowserTimeTracker.dmg` from the website or directly from the latest GitHub Release:
+   `https://github.com/qteqpid/browser-time-tracker/releases/latest/download/BrowserTimeTracker.dmg`
 2. Open the DMG.
 3. Drag `Browser Time Tracker.app` into `Applications`.
 4. Open the app from `Applications`.
@@ -92,7 +93,7 @@ https://qteqpid.github.io/app-web/browser-time-tracker/index.html
 或直接从 GitHub Releases 下载最新的 DMG：
 
 ```text
-BrowserTimeTracker.dmg
+https://github.com/qteqpid/browser-time-tracker/releases/latest/download/BrowserTimeTracker.dmg
 ```
 
 ### 2. 安装到 Applications
