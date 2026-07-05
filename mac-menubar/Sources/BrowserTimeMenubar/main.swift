@@ -604,6 +604,9 @@ final class BrowserActiveTabPoller {
 }
 
 final class LocalHTTPServer {
+    private static let eventTokenHeader = "x-browser-time-tracker-token"
+    private static let eventToken = "browser-time-tracker-local-events-v1"
+
     private let port: UInt16
     private let store: BrowserTimeStore
     private let ingestor: EventIngestor
@@ -681,6 +684,9 @@ final class LocalHTTPServer {
         }
 
         if method == "POST", path == "/events" {
+            guard Self.hasValidEventToken(in: header) else {
+                return response(status: "401 Unauthorized", body: "Unauthorized")
+            }
             guard let bodyData = body.data(using: .utf8),
                   let event = try? JSONDecoder().decode(BrowserEvent.self, from: bodyData) else {
                 return response(status: "400 Bad Request", body: "Invalid event")
@@ -690,6 +696,19 @@ final class LocalHTTPServer {
         }
 
         return response(status: "404 Not Found", body: "Not found")
+    }
+
+    private static func hasValidEventToken(in header: String) -> Bool {
+        for line in header.components(separatedBy: "\r\n").dropFirst() {
+            let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else { continue }
+            let name = parts[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            if name == eventTokenHeader {
+                return value == eventToken
+            }
+        }
+        return false
     }
 
     private func summaryResponse(queryItems: [URLQueryItem]) -> Data {
@@ -1115,7 +1134,8 @@ private func runSelfTest() throws {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-    let start = Date()
+    let dayStart = Calendar.current.startOfDay(for: Date())
+    let start = Calendar.current.date(byAdding: .hour, value: 12, to: dayStart) ?? dayStart
     let heartbeat = start.addingTimeInterval(75)
     let end = start.addingTimeInterval(120)
 

@@ -62,7 +62,7 @@ public sealed class Worker : BackgroundService
             return false;
         }
 
-        var idleMilliseconds = Environment.TickCount64 - info.dwTime;
+        var idleMilliseconds = unchecked((uint)Environment.TickCount - info.dwTime);
         return idleMilliseconds > TimeSpan.FromMinutes(5).TotalMilliseconds;
     }
 

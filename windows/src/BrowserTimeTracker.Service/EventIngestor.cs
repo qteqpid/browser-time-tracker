@@ -55,6 +55,7 @@ public sealed class EventIngestor
             {
                 case "page_active":
                 case "heartbeat":
+                    systemPauseReasons.Remove("idle");
                     if (systemPauseReasons.Count > 0 ||
                         string.IsNullOrWhiteSpace(browserEvent.Url) ||
                         !IsTrackable(browserEvent.Url))

@@ -6,6 +6,9 @@ namespace BrowserTimeTracker.Service;
 
 public sealed class LocalDashboardServer
 {
+    private const string EventTokenHeader = "X-Browser-Time-Tracker-Token";
+    private const string EventToken = "browser-time-tracker-local-events-v1";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -109,6 +112,12 @@ public sealed class LocalDashboardServer
 
             if (request.HttpMethod == "POST" && path == "/events")
             {
+                if (!IsValidEventToken(request))
+                {
+                    await WriteText(response, "Unauthorized", "text/plain; charset=utf-8", 401);
+                    return;
+                }
+
                 using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
                 var body = await reader.ReadToEndAsync();
                 if (body.Length > 64 * 1024)
@@ -139,6 +148,11 @@ public sealed class LocalDashboardServer
                 await WriteText(context.Response, "Internal server error", "text/plain; charset=utf-8", 500);
             }
         }
+    }
+
+    private static bool IsValidEventToken(HttpListenerRequest request)
+    {
+        return string.Equals(request.Headers[EventTokenHeader], EventToken, StringComparison.Ordinal);
     }
 
     private TodaySummary SummaryFromRequest(HttpListenerRequest request)

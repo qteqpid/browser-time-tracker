@@ -1,4 +1,5 @@
 const ENDPOINT = 'http://127.0.0.1:38888/events';
+const EVENT_TOKEN = 'browser-time-tracker-local-events-v1';
 const HEARTBEAT_ALARM = 'browser-time-tracker-heartbeat';
 const HEARTBEAT_MINUTES = 0.5;
 const IDLE_SECONDS = 300;
@@ -29,7 +30,10 @@ const postEvent = async (event, tab = null) => {
   try {
     await fetch(ENDPOINT, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-browser-time-tracker-token': EVENT_TOKEN
+      },
       body: JSON.stringify(payload)
     });
   } catch {
