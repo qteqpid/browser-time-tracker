@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Browser Time Tracker Connector",
+  "description": "Sends active tab events to the local Browser Time Tracker service.",
+  "version": "0.1.0",
+  "permissions": [
+    "alarms",
+    "idle",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:38888/*"
+  ],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "action": {
+    "default_title": "Browser Time Tracker"
+  }
+}

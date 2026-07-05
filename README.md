@@ -4,7 +4,7 @@
 
 # Browser Time Tracker
 
-### macOS 本地浏览器使用时间统计工具
+### macOS 本地浏览器使用时间统计工具；Windows 版实验中
 
 **按网站统计 · 按页面统计 · 日/小时图表 · 数据只留在本机**
 
@@ -12,6 +12,7 @@
 
 [![Website](https://img.shields.io/badge/Website-Download%20Page-7b22b8.svg)](https://qteqpid.github.io/app-web/browser-time-tracker/index.html)
 [![macOS](https://img.shields.io/badge/macOS-13%2B-blue.svg)](#支持平台)
+[![Windows](https://img.shields.io/badge/Windows-experimental-lightgrey.svg)](windows/README.md)
 [![Swift](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](#从源码构建)
 [![Local first](https://img.shields.io/badge/Data-local%20first-brightgreen.svg)](#隐私和数据)
 [![Browsers](https://img.shields.io/badge/Chrome%20%7C%20Safari%20%7C%20Edge%20%7C%20Firefox-supported-blueviolet.svg)](#支持浏览器)
@@ -25,7 +26,7 @@
 
 # Browser Time Tracker
 
-A local-first macOS menu bar app that tracks how much time you spend on websites and pages.
+A local-first browser usage tracker that shows how much time you spend on websites and pages. The macOS menu bar app is the stable build; the Windows service/tray/extension version is experimental and documented in `windows/README.md`.
 
 Website and download page:
 
@@ -76,6 +77,14 @@ Package DMG:
 
 ```bash
 NOTARY_PROFILE="btt-notary" ./scripts/package-dmg.sh
+```
+
+## Windows
+
+The Windows version is experimental. It uses a Windows Service, a tray UI, and a Chrome/Edge extension instead of macOS Automation.
+
+```text
+windows/README.md
 ```
 
 </details>
@@ -225,8 +234,17 @@ Browser Time Tracker 默认本地优先：
 | 平台 | 状态 |
 |---|---|
 | macOS 13+ | 支持 |
+| Windows | 实验版，见 [`windows/README.md`](windows/README.md) |
 | iPhone / iPad | 暂不支持 |
-| Windows / Linux | 暂不支持 |
+| Linux | 暂不支持 |
+
+## Windows 实验版
+
+Windows 版采用 Windows Service、系统托盘 UI 和 Chrome/Edge 扩展实现。它不复用 macOS 的 Automation/Accessibility 读取方式，详细构建、安装、扩展部署和限制见：
+
+```text
+windows/README.md
+```
 
 ## 登录后自动启动
 
