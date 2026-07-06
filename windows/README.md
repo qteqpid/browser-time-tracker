@@ -14,27 +14,117 @@ Windows 版采用三段式结构：
 
 在 Windows 机器上：
 
-1. 安装 .NET 8 SDK。
-2. 用管理员权限打开 PowerShell。
+1. 确认已安装 .NET 8 SDK。如果没有安装，按 [Install .NET 8 SDK](#install-net-8-sdk) 处理。
+2. 用管理员权限打开 PowerShell：右键 PowerShell 或 Windows Terminal，选择 `Run as administrator`。
 3. 进入本目录：
 
    ```powershell
    cd C:\Path\To\browser-time-tracker\windows
    ```
 
-4. 构建并安装 Service / Tray：
+4. 如果 PowerShell 拦截本地脚本，先只对当前 PowerShell 会话临时放行：
+
+   ```powershell
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+   ```
+
+5. 构建并安装 Service / Tray：
 
    ```powershell
    .\scripts\install-windows.ps1 -Build
    ```
 
-5. 在 Chrome 或 Edge 中加载 `windows\browser-extension` 扩展。
-6. 打开几个普通网页。
-7. 打开 Dashboard：
+6. 在 Chrome 或 Edge 中加载 `windows\browser-extension` 扩展。
+7. 打开几个普通网页。
+8. 打开 Dashboard：
 
    ```text
    http://127.0.0.1:38888/dashboard
    ```
+
+## Install .NET 8 SDK
+
+先在 PowerShell 里检查是否已经安装 SDK：
+
+```powershell
+dotnet --list-sdks
+```
+
+如果看到类似下面的输出，说明 .NET 8 SDK 已安装：
+
+```text
+8.0.xxx [C:\Program Files\dotnet\sdk]
+```
+
+如果提示 `dotnet` 不是可识别的命令，或列表里没有 `8.0.xxx`，请安装 .NET 8 SDK：
+
+1. 打开微软官方下载页：
+
+   ```text
+   https://dotnet.microsoft.com/download/dotnet/8.0
+   ```
+
+2. 下载 **SDK** 下的 Windows installer。大多数 Windows 电脑选择 `x64`，ARM 设备选择 `Arm64`。
+3. 运行安装包并完成安装。
+4. 关闭当前 PowerShell，重新打开一个新的 PowerShell。
+5. 再次验证：
+
+   ```powershell
+   dotnet --list-sdks
+   ```
+
+如果安装后仍然提示找不到 `dotnet`，先直接检查安装路径：
+
+```powershell
+& "C:\Program Files\dotnet\dotnet.exe" --list-sdks
+```
+
+如果这个命令能输出 SDK 列表，把下面路径加入系统 `Path` 环境变量后重新打开 PowerShell：
+
+```text
+C:\Program Files\dotnet\
+```
+
+## PowerShell Execution Policy
+
+如果运行安装脚本时报类似下面的错误：
+
+```text
+cannot be loaded because running scripts is disabled on this system
+PSSecurityException
+```
+
+这是 Windows PowerShell 执行策略拦截本地 `.ps1` 脚本。推荐只对当前 PowerShell 窗口临时放行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+然后重新运行安装命令：
+
+```powershell
+.\scripts\install-windows.ps1 -Build
+```
+
+这个设置只影响当前 PowerShell 会话，关闭窗口后失效。
+
+## Administrator PowerShell Required
+
+安装脚本需要创建 Windows Service、复制文件到 `C:\Program Files\BrowserTimeTracker`，并写入系统级启动项，所以必须在管理员 PowerShell 中运行。
+
+如果运行 `.\scripts\install-windows.ps1 -Build` 时报类似下面的错误：
+
+```text
+Run this script from an elevated Administrator PowerShell.
+```
+
+请关闭当前窗口，右键 PowerShell 或 Windows Terminal，选择 `Run as administrator`，然后重新运行：
+
+```powershell
+cd C:\Path\To\browser-time-tracker\windows
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\install-windows.ps1 -Build
+```
 
 ## Deliberately Removed Controls
 
@@ -271,9 +361,23 @@ Dashboard 没有数据时：
    Invoke-RestMethod http://127.0.0.1:38888/health
    ```
 
-3. 确认 Chrome / Edge 扩展已启用。
-4. 确认当前标签页是 `http://` 或 `https://` 页面。
-5. 确认浏览器不是停留在 `chrome://`、`edge://`、扩展页面或本地文件页面。
+3. 如果 Tray 显示 `Service: unavailable`，但 Service 状态是 `Running`，检查 `38888` 端口由哪个进程监听：
+
+   ```powershell
+   Get-CimInstance Win32_Service -Filter "Name='BrowserTimeTracker'" |
+     Select-Object Name, State, ProcessId, PathName
+   netstat -ano | findstr :38888
+   ```
+
+   `netstat` 最后一列 PID 应该等于 `BrowserTimeTracker` 的 `ProcessId`。如果显示 `4` / `System`，通常是旧版安装仍在使用 Windows HTTP.sys 监听方式；请重新构建并安装当前版本：
+
+   ```powershell
+   .\scripts\install-windows.ps1 -Build
+   ```
+
+4. 确认 Chrome / Edge 扩展已启用。
+5. 确认当前标签页是 `http://` 或 `https://` 页面。
+6. 确认浏览器不是停留在 `chrome://`、`edge://`、扩展页面或本地文件页面。
 
 ## Local Data
 

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 
@@ -17,7 +18,8 @@ public sealed class LocalDashboardServer
     private readonly BrowserTimeStore store;
     private readonly EventIngestor ingestor;
     private readonly ILogger<LocalDashboardServer> logger;
-    private readonly HttpListener listener = new();
+    private readonly TcpListener listener = new(IPAddress.Loopback, 38888);
+    private CancellationTokenSource? stopCts;
 
     public LocalDashboardServer(
         BrowserTimeStore store,
@@ -27,37 +29,35 @@ public sealed class LocalDashboardServer
         this.store = store;
         this.ingestor = ingestor;
         this.logger = logger;
-        listener.Prefixes.Add("http://127.0.0.1:38888/");
     }
 
     public void Start()
     {
+        stopCts = new CancellationTokenSource();
         listener.Start();
-        _ = Task.Run(AcceptLoop);
+        _ = Task.Run(() => AcceptLoop(stopCts.Token));
     }
 
     public void Stop()
     {
-        if (listener.IsListening)
-        {
-            listener.Stop();
-        }
+        stopCts?.Cancel();
+        listener.Stop();
     }
 
-    private async Task AcceptLoop()
+    private async Task AcceptLoop(CancellationToken cancellationToken)
     {
-        while (listener.IsListening)
+        while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var context = await listener.GetContextAsync();
-                _ = Task.Run(() => Route(context));
+                var client = await listener.AcceptTcpClientAsync(cancellationToken);
+                _ = Task.Run(() => Route(client, cancellationToken), cancellationToken);
             }
-            catch (HttpListenerException)
+            catch (OperationCanceledException)
             {
                 break;
             }
-            catch (ObjectDisposedException)
+            catch (SocketException) when (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
@@ -68,100 +68,238 @@ public sealed class LocalDashboardServer
         }
     }
 
-    private async Task Route(HttpListenerContext context)
+    private async Task Route(TcpClient client, CancellationToken cancellationToken)
+    {
+        using (client)
+        {
+            try
+            {
+                var stream = client.GetStream();
+                var request = await ReadRequest(stream, cancellationToken);
+                var response = request is null
+                    ? Response("400 Bad Request", "text/plain; charset=utf-8", "Bad request"u8.ToArray())
+                    : Route(request);
+                await stream.WriteAsync(response, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Request failed.");
+            }
+        }
+    }
+
+    private byte[] Route(LocalRequest request)
     {
         try
         {
-            var request = context.Request;
-            var response = context.Response;
-            response.Headers["Access-Control-Allow-Origin"] = "*";
-            response.Headers["Access-Control-Allow-Headers"] = "content-type";
-            response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-
-            if (request.HttpMethod == "OPTIONS")
+            if (request.Method == "OPTIONS")
             {
-                response.StatusCode = 204;
-                response.Close();
-                return;
+                return Response("204 No Content", "text/plain; charset=utf-8", Array.Empty<byte>());
             }
 
-            var path = request.Url?.AbsolutePath ?? "/";
-            if (request.HttpMethod == "GET" && path == "/health")
+            if (request.Method == "GET" && request.Path == "/health")
             {
-                await WriteJson(response, new { ok = true, paused = ingestor.IsPaused });
-                return;
+                return Json(new { ok = true, paused = ingestor.IsPaused });
             }
 
-            if (request.HttpMethod == "GET" && path == "/api/today")
+            if (request.Method == "GET" && request.Path == "/api/today")
             {
-                await WriteJson(response, store.TodaySummary());
-                return;
+                return Json(store.TodaySummary());
             }
 
-            if (request.HttpMethod == "GET" && path == "/api/summary")
+            if (request.Method == "GET" && request.Path == "/api/summary")
             {
-                await WriteJson(response, SummaryFromRequest(request));
-                return;
+                return Json(SummaryFromRequest(request.Query));
             }
 
-            if (request.HttpMethod == "GET" && (path == "/" || path == "/dashboard"))
+            if (request.Method == "GET" && (request.Path == "/" || request.Path == "/dashboard"))
             {
-                await WriteText(response, DashboardHtml.Value, "text/html; charset=utf-8");
-                return;
+                return Text(DashboardHtml.Value, "text/html; charset=utf-8");
             }
 
-            if (request.HttpMethod == "POST" && path == "/events")
+            if (request.Method == "POST" && request.Path == "/events")
             {
                 if (!IsValidEventToken(request))
                 {
-                    await WriteText(response, "Unauthorized", "text/plain; charset=utf-8", 401);
-                    return;
+                    return Text("Unauthorized", "text/plain; charset=utf-8", "401 Unauthorized");
                 }
 
-                using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
-                var body = await reader.ReadToEndAsync();
-                if (body.Length > 64 * 1024)
+                if (request.Body.Length > 64 * 1024)
                 {
-                    await WriteText(response, "Request too large", "text/plain; charset=utf-8", 413);
-                    return;
+                    return Text("Request too large", "text/plain; charset=utf-8", "413 Payload Too Large");
                 }
 
-                var browserEvent = JsonSerializer.Deserialize<BrowserEvent>(body, JsonOptions);
+                var browserEvent = JsonSerializer.Deserialize<BrowserEvent>(request.Body, JsonOptions);
                 if (browserEvent is null)
                 {
-                    await WriteText(response, "Invalid event", "text/plain; charset=utf-8", 400);
-                    return;
+                    return Text("Invalid event", "text/plain; charset=utf-8", "400 Bad Request");
                 }
 
                 ingestor.Ingest(browserEvent);
-                await WriteJson(response, new { ok = true });
-                return;
+                return Json(new { ok = true });
             }
 
-            await WriteText(response, "Not found", "text/plain; charset=utf-8", 404);
+            return Text("Not found", "text/plain; charset=utf-8", "404 Not Found");
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Request failed.");
-            if (context.Response.OutputStream.CanWrite)
-            {
-                await WriteText(context.Response, "Internal server error", "text/plain; charset=utf-8", 500);
-            }
+            return Text("Internal server error", "text/plain; charset=utf-8", "500 Internal Server Error");
         }
     }
 
-    private static bool IsValidEventToken(HttpListenerRequest request)
+    private static async Task<LocalRequest?> ReadRequest(NetworkStream stream, CancellationToken cancellationToken)
     {
-        return string.Equals(request.Headers[EventTokenHeader], EventToken, StringComparison.Ordinal);
+        using var buffer = new MemoryStream();
+        var readBuffer = new byte[8192];
+        var headerEnd = -1;
+        var contentLength = 0;
+
+        while (buffer.Length <= 128 * 1024)
+        {
+            var read = await stream.ReadAsync(readBuffer, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            buffer.Write(readBuffer, 0, read);
+            var bytes = buffer.ToArray();
+            if (headerEnd < 0)
+            {
+                headerEnd = IndexOf(bytes, "\r\n\r\n"u8.ToArray());
+                if (headerEnd >= 0)
+                {
+                    var header = Encoding.UTF8.GetString(bytes, 0, headerEnd);
+                    contentLength = ContentLength(header);
+                }
+            }
+
+            if (headerEnd >= 0 && bytes.Length >= headerEnd + 4 + contentLength)
+            {
+                break;
+            }
+        }
+
+        var data = buffer.ToArray();
+        if (headerEnd < 0 || data.Length < headerEnd + 4 + contentLength)
+        {
+            return null;
+        }
+
+        var headerText = Encoding.UTF8.GetString(data, 0, headerEnd);
+        var body = Encoding.UTF8.GetString(data, headerEnd + 4, contentLength);
+        return ParseRequest(headerText, body);
     }
 
-    private TodaySummary SummaryFromRequest(HttpListenerRequest request)
+    private static LocalRequest? ParseRequest(string headerText, string body)
     {
-        var dateString = request.QueryString["date"] ?? DateTimeOffset.Now.ToString("yyyy-MM-dd");
+        var lines = headerText.Split("\r\n");
+        var requestParts = lines.FirstOrDefault()?.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries) ?? [];
+        if (requestParts.Length < 2)
+        {
+            return null;
+        }
+
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in lines.Skip(1))
+        {
+            var separator = line.IndexOf(':');
+            if (separator <= 0)
+            {
+                continue;
+            }
+            headers[line[..separator].Trim()] = line[(separator + 1)..].Trim();
+        }
+
+        if (!Uri.TryCreate("http://127.0.0.1" + requestParts[1], UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        return new LocalRequest(
+            requestParts[0],
+            uri.AbsolutePath,
+            ParseQuery(uri.Query),
+            headers,
+            body);
+    }
+
+    private static int ContentLength(string headerText)
+    {
+        foreach (var line in headerText.Split("\r\n").Skip(1))
+        {
+            var separator = line.IndexOf(':');
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            var name = line[..separator].Trim();
+            var value = line[(separator + 1)..].Trim();
+            if (string.Equals(name, "Content-Length", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(value, out var contentLength))
+            {
+                return contentLength;
+            }
+        }
+        return 0;
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseQuery(string query)
+    {
+        if (string.IsNullOrEmpty(query))
+        {
+            return new Dictionary<string, string>();
+        }
+
+        return query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2))
+            .Where(parts => parts.Length > 0)
+            .ToDictionary(
+                parts => WebUtility.UrlDecode(parts[0]),
+                parts => parts.Length > 1 ? WebUtility.UrlDecode(parts[1]) : "",
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static int IndexOf(byte[] source, byte[] pattern)
+    {
+        for (var index = 0; index <= source.Length - pattern.Length; index++)
+        {
+            var found = true;
+            for (var patternIndex = 0; patternIndex < pattern.Length; patternIndex++)
+            {
+                if (source[index + patternIndex] != pattern[patternIndex])
+                {
+                    found = false;
+                    break;
+                }
+            }
+
+            if (found)
+            {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static bool IsValidEventToken(LocalRequest request)
+    {
+        return request.Headers.TryGetValue(EventTokenHeader, out var token) &&
+               string.Equals(token, EventToken, StringComparison.Ordinal);
+    }
+
+    private TodaySummary SummaryFromRequest(IReadOnlyDictionary<string, string> query)
+    {
+        var dateString = query.TryGetValue("date", out var requestedDate)
+            ? requestedDate
+            : DateTimeOffset.Now.ToString("yyyy-MM-dd");
         var day = DateTime.TryParse(dateString, out var parsed)
             ? new DateTimeOffset(parsed.Date)
             : new DateTimeOffset(DateTimeOffset.Now.Date);
-        var hourValue = request.QueryString["hour"] ?? "all";
+        var hourValue = query.TryGetValue("hour", out var requestedHour) ? requestedHour : "all";
 
         if (int.TryParse(hourValue, out var hour) && hour is >= 0 and < 24)
         {
@@ -173,25 +311,36 @@ public sealed class LocalDashboardServer
         return store.Summary(day, day.AddDays(1), $"{dateString} All day");
     }
 
-    private static Task WriteJson(HttpListenerResponse response, object value)
+    private static byte[] Json(object value)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
-        response.StatusCode = 200;
-        response.ContentType = "application/json; charset=utf-8";
-        response.ContentLength64 = bytes.Length;
-        response.OutputStream.Write(bytes, 0, bytes.Length);
-        response.Close();
-        return Task.CompletedTask;
+        return Response("200 OK", "application/json; charset=utf-8", bytes);
     }
 
-    private static Task WriteText(HttpListenerResponse response, string value, string contentType, int statusCode = 200)
+    private static byte[] Text(string value, string contentType, string status = "200 OK")
     {
         var bytes = Encoding.UTF8.GetBytes(value);
-        response.StatusCode = statusCode;
-        response.ContentType = contentType;
-        response.ContentLength64 = bytes.Length;
-        response.OutputStream.Write(bytes, 0, bytes.Length);
-        response.Close();
-        return Task.CompletedTask;
+        return Response(status, contentType, bytes);
     }
+
+    private static byte[] Response(string status, string contentType, byte[] body)
+    {
+        var header = new StringBuilder()
+            .Append("HTTP/1.1 ").Append(status).Append("\r\n")
+            .Append("Content-Type: ").Append(contentType).Append("\r\n")
+            .Append("Content-Length: ").Append(body.Length).Append("\r\n")
+            .Append("Access-Control-Allow-Origin: *\r\n")
+            .Append("Access-Control-Allow-Headers: content-type, x-browser-time-tracker-token\r\n")
+            .Append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
+            .Append("Connection: close\r\n\r\n")
+            .ToString();
+        return Encoding.UTF8.GetBytes(header).Concat(body).ToArray();
+    }
+
+    private sealed record LocalRequest(
+        string Method,
+        string Path,
+        IReadOnlyDictionary<string, string> Query,
+        IReadOnlyDictionary<string, string> Headers,
+        string Body);
 }
