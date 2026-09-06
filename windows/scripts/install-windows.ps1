@@ -30,6 +30,36 @@ function Join-RelativeToWindowsRoot([string] $Path) {
     return Join-Path $windowsRoot.Path $Path
 }
 
+function Stop-ServiceAndWait([string] $Name) {
+    $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $service -or $service.Status -eq "Stopped") {
+        return
+    }
+
+    Write-Host "Stopping existing service before updating files: $Name"
+    Stop-Service -Name $Name -Force
+    $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(30))
+}
+
+function Stop-TrayAndWait {
+    $processes = Get-Process -Name "BrowserTimeTracker.Tray" -ErrorAction SilentlyContinue
+    if (-not $processes) {
+        return
+    }
+
+    Write-Host "Stopping existing tray UI before updating files."
+    foreach ($process in $processes) {
+        Stop-Process -Id $process.Id -Force
+    }
+
+    foreach ($process in $processes) {
+        try {
+            $process.WaitForExit(10000) | Out-Null
+        } catch {
+        }
+    }
+}
+
 if (-not (Test-IsAdministrator)) {
     throw "Run this script from an elevated Administrator PowerShell."
 }
@@ -61,9 +91,9 @@ if (-not (Test-Path $trayExeSource)) {
 
 $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if (-not $SkipService -and $existing -and $existing.Status -ne "Stopped") {
-    Write-Host "Stopping existing service before updating files: $serviceName"
-    Stop-Service -Name $serviceName -Force
+    Stop-ServiceAndWait $serviceName
 }
+Stop-TrayAndWait
 
 $serviceInstallDir = Join-Path $InstallRoot "Service"
 $trayInstallDir = Join-Path $InstallRoot "Tray"

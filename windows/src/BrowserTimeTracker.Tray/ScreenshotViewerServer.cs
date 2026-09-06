@@ -29,7 +29,7 @@ internal sealed class ScreenshotViewerServer : IDisposable
     {
         get
         {
-            return $"http://{Environment.MachineName}:{Port}/screenshots?token={Uri.EscapeDataString(token)}";
+            return $"http://{Environment.MachineName}.local:{Port}/screenshots?token={Uri.EscapeDataString(token)}";
         }
     }
 

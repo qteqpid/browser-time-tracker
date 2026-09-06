@@ -29,6 +29,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private const long ScreenshotJpegQuality = 65L;
 
     private readonly NotifyIcon notifyIcon;
+    private readonly Icon trayIcon;
     private readonly ToolStripMenuItem statusItem;
     private readonly System.Windows.Forms.Timer healthTimer;
     private readonly System.Windows.Forms.Timer activityTimer;
@@ -55,10 +56,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit tray UI", null, (_, _) => ExitThread());
 
+        trayIcon = CreateTrayIcon();
         notifyIcon = new NotifyIcon
         {
             Text = "Browser Time Tracker",
-            Icon = SystemIcons.Application,
+            Icon = trayIcon,
             ContextMenuStrip = menu,
             Visible = true
         };
@@ -122,6 +124,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         notifyIcon.Visible = false;
         notifyIcon.Dispose();
+        trayIcon.Dispose();
         screenshotViewerServer.Dispose();
         httpClient.Dispose();
         base.ExitThreadCore();
@@ -134,6 +137,42 @@ internal sealed class TrayApplicationContext : ApplicationContext
             FileName = DashboardUrl,
             UseShellExecute = true
         });
+    }
+
+    private static Icon CreateTrayIcon()
+    {
+        using var bitmap = new Bitmap(32, 32);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            graphics.Clear(Color.Transparent);
+
+            using var ringPen = new Pen(Color.FromArgb(15, 118, 110), 3.2f);
+            using var handPen = new Pen(Color.White, 2.4f)
+            {
+                StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                EndCap = System.Drawing.Drawing2D.LineCap.Round
+            };
+            using var fillBrush = new SolidBrush(Color.FromArgb(15, 118, 110));
+            using var accentBrush = new SolidBrush(Color.FromArgb(245, 158, 11));
+
+            graphics.FillEllipse(fillBrush, 4, 4, 24, 24);
+            graphics.DrawEllipse(ringPen, 4, 4, 24, 24);
+            graphics.DrawLine(handPen, 16, 16, 16, 8);
+            graphics.DrawLine(handPen, 16, 16, 22, 18);
+            graphics.FillEllipse(accentBrush, 13, 13, 6, 6);
+        }
+
+        var handle = bitmap.GetHicon();
+        try
+        {
+            using var icon = Icon.FromHandle(handle);
+            return (Icon)icon.Clone();
+        }
+        finally
+        {
+            DestroyIcon(handle);
+        }
     }
 
     private void OpenScreenshots()
@@ -413,6 +452,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     [DllImport("user32.dll")]
     private static extern bool GetLastInputInfo(ref LastInputInfo plii);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr hIcon);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct LastInputInfo
