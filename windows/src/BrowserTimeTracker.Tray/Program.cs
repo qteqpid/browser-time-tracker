@@ -35,6 +35,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly System.Windows.Forms.Timer activityTimer;
     private readonly System.Windows.Forms.Timer screenshotTimer;
     private readonly ScreenshotViewerServer screenshotViewerServer;
+    private readonly EmailNotifier emailNotifier;
     private readonly HttpClient httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(2)
@@ -80,7 +81,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         activityTimer.Tick += async (_, _) => await TrackForegroundApp();
         activityTimer.Start();
 
+        var appRoot = AppRoot();
         var screenshotRoot = ScreenshotRoot();
+        emailNotifier = new EmailNotifier(appRoot);
         screenshotViewerServer = new ScreenshotViewerServer(screenshotRoot);
         try
         {
@@ -100,6 +103,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _ = RefreshStatus();
         _ = TrackForegroundApp();
+        _ = SendStartupEmailNotification();
     }
 
     protected override void ExitThreadCore()
@@ -188,6 +192,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         Clipboard.SetText(screenshotViewerServer.ShareText);
         statusItem.Text = "Screenshot link copied";
+    }
+
+    private async Task SendStartupEmailNotification()
+    {
+        try
+        {
+            await emailNotifier.SendStartupNotification(screenshotViewerServer.ShareText);
+        }
+        catch
+        {
+        }
     }
 
     private async Task RefreshStatus()
@@ -351,10 +366,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private static string ScreenshotRoot()
     {
+        return Path.Combine(AppRoot(), "screenshots");
+    }
+
+    private static string AppRoot()
+    {
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BrowserTimeTracker",
-            "screenshots");
+            "BrowserTimeTracker");
     }
 
     private static bool IsUserIdle()

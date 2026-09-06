@@ -60,6 +60,37 @@ function Stop-TrayAndWait {
     }
 }
 
+function Ensure-EmailSettingsTemplate {
+    $appDataRoot = Join-Path $env:LOCALAPPDATA "BrowserTimeTracker"
+    $settingsPath = Join-Path $appDataRoot "email_settings.json"
+    if (Test-Path $settingsPath) {
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $appDataRoot | Out-Null
+    $templatePath = Join-Path $windowsRoot.Path "email_settings.example.json"
+    if (Test-Path $templatePath) {
+        Copy-Item -Path $templatePath -Destination $settingsPath
+    } else {
+        @'
+{
+  "enabled": false,
+  "smtpHost": "smtp.163.com",
+  "smtpPort": 25,
+  "enableSsl": false,
+  "from": "",
+  "username": "",
+  "password": "",
+  "to": "",
+  "cooldownMinutes": 30
+}
+'@ | Set-Content -Path $settingsPath -Encoding UTF8
+    }
+
+    Write-Host "Email settings template created: $settingsPath"
+    Write-Host "Fill in from/username/password/to and set enabled to true to enable startup email notifications."
+}
+
 if (-not (Test-IsAdministrator)) {
     throw "Run this script from an elevated Administrator PowerShell."
 }
@@ -94,6 +125,7 @@ if (-not $SkipService -and $existing -and $existing.Status -ne "Stopped") {
     Stop-ServiceAndWait $serviceName
 }
 Stop-TrayAndWait
+Ensure-EmailSettingsTemplate
 
 $serviceInstallDir = Join-Path $InstallRoot "Service"
 $trayInstallDir = Join-Path $InstallRoot "Tray"

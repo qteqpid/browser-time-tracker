@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "smtpHost": "smtp.163.com",
+  "smtpPort": 25,
+  "enableSsl": false,
+  "from": "",
+  "username": "",
+  "password": "",
+  "to": "",
+  "cooldownMinutes": 30
+}
