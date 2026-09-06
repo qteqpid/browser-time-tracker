@@ -17,6 +17,7 @@ public sealed class LocalDashboardServer
 
     private readonly BrowserTimeStore store;
     private readonly EventIngestor ingestor;
+    private readonly AppEventIngestor appIngestor;
     private readonly ILogger<LocalDashboardServer> logger;
     private readonly TcpListener listener = new(IPAddress.Loopback, 38888);
     private CancellationTokenSource? stopCts;
@@ -24,10 +25,12 @@ public sealed class LocalDashboardServer
     public LocalDashboardServer(
         BrowserTimeStore store,
         EventIngestor ingestor,
+        AppEventIngestor appIngestor,
         ILogger<LocalDashboardServer> logger)
     {
         this.store = store;
         this.ingestor = ingestor;
+        this.appIngestor = appIngestor;
         this.logger = logger;
     }
 
@@ -94,7 +97,7 @@ public sealed class LocalDashboardServer
         {
             if (request.Method == "OPTIONS")
             {
-                return Response("204 No Content", "text/plain; charset=utf-8", Array.Empty<byte>());
+                return Response("204 No Content", "text/plain; charset=utf-8", Array.Empty<byte>(), allowCors: true);
             }
 
             if (request.Method == "GET" && request.Path == "/health")
@@ -121,22 +124,44 @@ public sealed class LocalDashboardServer
             {
                 if (!IsValidEventToken(request))
                 {
-                    return Text("Unauthorized", "text/plain; charset=utf-8", "401 Unauthorized");
+                    return Text("Unauthorized", "text/plain; charset=utf-8", "401 Unauthorized", allowCors: true);
                 }
 
                 if (request.Body.Length > 64 * 1024)
                 {
-                    return Text("Request too large", "text/plain; charset=utf-8", "413 Payload Too Large");
+                    return Text("Request too large", "text/plain; charset=utf-8", "413 Payload Too Large", allowCors: true);
                 }
 
                 var browserEvent = JsonSerializer.Deserialize<BrowserEvent>(request.Body, JsonOptions);
                 if (browserEvent is null)
                 {
-                    return Text("Invalid event", "text/plain; charset=utf-8", "400 Bad Request");
+                    return Text("Invalid event", "text/plain; charset=utf-8", "400 Bad Request", allowCors: true);
                 }
 
                 ingestor.Ingest(browserEvent);
-                return Json(new { ok = true });
+                return Json(new { ok = true }, allowCors: true);
+            }
+
+            if (request.Method == "POST" && request.Path == "/app-events")
+            {
+                if (!IsValidEventToken(request))
+                {
+                    return Text("Unauthorized", "text/plain; charset=utf-8", "401 Unauthorized", allowCors: true);
+                }
+
+                if (request.Body.Length > 64 * 1024)
+                {
+                    return Text("Request too large", "text/plain; charset=utf-8", "413 Payload Too Large", allowCors: true);
+                }
+
+                var appEvent = JsonSerializer.Deserialize<AppEvent>(request.Body, JsonOptions);
+                if (appEvent is null)
+                {
+                    return Text("Invalid event", "text/plain; charset=utf-8", "400 Bad Request", allowCors: true);
+                }
+
+                appIngestor.Ingest(appEvent);
+                return Json(new { ok = true }, allowCors: true);
             }
 
             return Text("Not found", "text/plain; charset=utf-8", "404 Not Found");
@@ -311,30 +336,39 @@ public sealed class LocalDashboardServer
         return store.Summary(day, day.AddDays(1), $"{dateString} All day");
     }
 
-    private static byte[] Json(object value)
+    private static byte[] Json(object value, bool allowCors = false)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
-        return Response("200 OK", "application/json; charset=utf-8", bytes);
+        return Response("200 OK", "application/json; charset=utf-8", bytes, allowCors);
     }
 
-    private static byte[] Text(string value, string contentType, string status = "200 OK")
+    private static byte[] Text(
+        string value,
+        string contentType,
+        string status = "200 OK",
+        bool allowCors = false)
     {
         var bytes = Encoding.UTF8.GetBytes(value);
-        return Response(status, contentType, bytes);
+        return Response(status, contentType, bytes, allowCors);
     }
 
-    private static byte[] Response(string status, string contentType, byte[] body)
+    private static byte[] Response(string status, string contentType, byte[] body, bool allowCors = false)
     {
         var header = new StringBuilder()
             .Append("HTTP/1.1 ").Append(status).Append("\r\n")
             .Append("Content-Type: ").Append(contentType).Append("\r\n")
             .Append("Content-Length: ").Append(body.Length).Append("\r\n")
-            .Append("Access-Control-Allow-Origin: *\r\n")
-            .Append("Access-Control-Allow-Headers: content-type, x-browser-time-tracker-token\r\n")
-            .Append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
-            .Append("Connection: close\r\n\r\n")
-            .ToString();
-        return Encoding.UTF8.GetBytes(header).Concat(body).ToArray();
+            .Append("Connection: close\r\n");
+        if (allowCors)
+        {
+            header
+                .Append("Access-Control-Allow-Origin: *\r\n")
+                .Append("Access-Control-Allow-Headers: content-type, x-browser-time-tracker-token\r\n")
+                .Append("Access-Control-Allow-Methods: POST, OPTIONS\r\n");
+        }
+
+        header.Append("\r\n");
+        return Encoding.UTF8.GetBytes(header.ToString()).Concat(body).ToArray();
     }
 
     private sealed record LocalRequest(

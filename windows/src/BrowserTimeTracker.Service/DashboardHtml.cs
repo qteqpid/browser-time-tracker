@@ -10,8 +10,8 @@ public static class DashboardHtml
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Browser Time Tracker</title>
   <style>
-    :root { color-scheme: light dark; --bg: #f6f7f4; --ink: #20231f; --muted: #6d756c; --line: rgba(38,48,35,.14); --surface: rgba(255,255,252,.9); --accent: #0f766e; font-family: "Segoe UI", system-ui, sans-serif; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #11140f; --ink: #f3f5ef; --muted: #a6afa2; --line: rgba(243,245,239,.14); --surface: rgba(25,29,23,.9); --accent: #2dd4bf; } }
+    :root { color-scheme: light dark; --bg: #f6f7f4; --ink: #20231f; --muted: #6d756c; --line: rgba(38,48,35,.14); --surface: rgba(255,255,252,.9); --accent: #0f766e; --accent-2: #9f5b14; font-family: "Segoe UI", system-ui, sans-serif; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #11140f; --ink: #f3f5ef; --muted: #a6afa2; --line: rgba(243,245,239,.14); --surface: rgba(25,29,23,.9); --accent: #2dd4bf; --accent-2: #f59e0b; } }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); }
     main { max-width: 1120px; margin: 0 auto; padding: 34px 22px 42px; }
@@ -21,11 +21,13 @@ public static class DashboardHtml
     .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     input, select, button { height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0 10px; font: inherit; }
     button { cursor: pointer; }
-    .summary { display: grid; grid-template-columns: minmax(190px,270px) minmax(0,1fr); gap: 18px; margin-bottom: 18px; }
+    .summary { display: grid; grid-template-columns: minmax(220px,300px) minmax(0,1fr); gap: 18px; margin-bottom: 18px; }
     .metric, .chart, section { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 16px 42px rgba(38,48,35,.09); }
-    .metric { min-height: 178px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; }
+    .metric-stack { display: grid; gap: 12px; }
+    .metric { min-height: 83px; padding: 16px 18px; display: flex; flex-direction: column; justify-content: space-between; }
     .metric-label, h2, .chart-title { margin: 0 0 14px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-    .total { font-size: clamp(38px,7vw,58px); color: var(--accent); font-weight: 780; line-height: .95; font-variant-numeric: tabular-nums; }
+    .total { font-size: clamp(30px,5vw,42px); color: var(--accent); font-weight: 780; line-height: .95; font-variant-numeric: tabular-nums; }
+    .total.app { color: var(--accent-2); }
     .chart, section { padding: 18px; }
     .bars { display: grid; grid-template-columns: repeat(24,minmax(0,1fr)); gap: 4px; height: 146px; align-items: end; border-bottom: 1px solid var(--line); }
     .day-bars { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 10px; height: 162px; align-items: end; border-bottom: 1px solid var(--line); }
@@ -38,10 +40,14 @@ public static class DashboardHtml
     .row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: center; min-height: 44px; padding: 10px 8px; border-top: 1px solid var(--line); }
     .row:first-child { border-top: 0; }
     .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .secondary { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
     .time { color: var(--accent); font-weight: 760; font-variant-numeric: tabular-nums; }
+    .time.app { color: var(--accent-2); }
+    .timeline-row { grid-template-columns: 105px minmax(0,1fr) auto; }
+    .range { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
     a { color: inherit; text-decoration: none; }
     a:hover { text-decoration: underline; }
-    @media (max-width: 760px) { main { padding: 22px 14px 30px; } header { display: block; } .controls { justify-content: flex-start; margin-top: 14px; } .summary, .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { main { padding: 22px 14px 30px; } header { display: block; } .controls { justify-content: flex-start; margin-top: 14px; } .summary, .grid { grid-template-columns: 1fr; } .timeline-row { grid-template-columns: 1fr auto; } .range { grid-column: 1 / -1; } }
   </style>
 </head>
 <body>
@@ -58,24 +64,37 @@ public static class DashboardHtml
       </div>
     </header>
     <div class="summary">
-      <div class="metric">
-        <div class="metric-label">Tracked browser time</div>
-        <div class="total" id="total">0m</div>
+      <div class="metric-stack">
+        <div class="metric">
+          <div class="metric-label">Program time</div>
+          <div class="total app" id="appTotal">0m</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Browser page time</div>
+          <div class="total" id="browserTotal">0m</div>
+        </div>
       </div>
       <div class="chart">
-        <div class="chart-title">Daily usage</div>
+        <div class="chart-title">Browser daily usage</div>
         <div class="day-bars" id="dayBars"></div>
         <div class="day-ticks" id="dayTicks"></div>
       </div>
     </div>
     <div class="chart">
-      <div class="chart-title">Hourly usage</div>
+      <div class="chart-title">Browser hourly usage</div>
       <div class="bars" id="bars"></div>
       <div class="ticks" id="hourTicks"></div>
     </div>
     <div class="grid" style="margin-top:18px">
+      <section><h2>Top Users</h2><div id="users"></div></section>
+      <section><h2>Top Programs</h2><div id="apps"></div></section>
+      <section><h2>Top Windows</h2><div id="appWindows"></div></section>
       <section><h2>Top Websites</h2><div id="domains"></div></section>
       <section><h2>Top Pages</h2><div id="pages"></div></section>
+    </div>
+    <div class="grid" style="margin-top:18px">
+      <section><h2>Program Sessions</h2><div id="appTimeline"></div></section>
+      <section><h2>Page Sessions</h2><div id="pageTimeline"></div></section>
     </div>
   </main>
   <script>
@@ -83,6 +102,7 @@ public static class DashboardHtml
       const minutes = Math.floor(seconds / 60);
       return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
     };
+    const formatClock = seconds => new Date(seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const localDateValue = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     const dateInput = document.getElementById('date');
@@ -99,6 +119,15 @@ public static class DashboardHtml
       }).join('') : '<div class="row"><span class="label">No data yet</span><span class="time">0m</span></div>';
     };
 
+    const renderTimeline = (id, items, kind) => {
+      const node = document.getElementById(id);
+      node.innerHTML = items.length ? items.map(item => {
+        const label = item.url ? `<a class="label" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.label)}</a>` : `<span class="label">${escapeHtml(item.label)}</span>`;
+        const secondary = item.secondary ? `<div class="secondary">${escapeHtml(item.secondary)}</div>` : '';
+        return `<div class="row timeline-row"><span class="range">${formatClock(item.startedAt)}-${formatClock(item.endedAt)}</span><div>${label}${secondary}</div><span class="time ${kind === 'app' ? 'app' : ''}">${format(item.seconds)}</span></div>`;
+      }).join('') : '<div class="row"><span class="label">No sessions yet</span><span class="time">0m</span></div>';
+    };
+
     const renderBars = (id, items, key) => {
       const max = Math.max(...items.map(item => item.seconds), 0);
       document.getElementById(id).innerHTML = items.map(item => {
@@ -112,14 +141,20 @@ public static class DashboardHtml
       const response = await fetch(`/api/summary?${params}`);
       const data = await response.json();
       document.getElementById('window').textContent = data.windowLabel;
-      document.getElementById('total').textContent = format(data.totalSeconds);
+      document.getElementById('appTotal').textContent = format(data.appTotalSeconds);
+      document.getElementById('browserTotal').textContent = format(data.totalSeconds);
       renderBars('bars', data.hours, 'hour');
       renderBars('dayBars', data.days, 'date');
       document.getElementById('dayTicks').innerHTML = data.days.map(item => `<span>${escapeHtml(item.label)}</span>`).join('');
       document.querySelectorAll('.bar').forEach(bar => bar.addEventListener('click', () => { hourSelect.value = bar.dataset.value; refresh(); }));
       document.querySelectorAll('.day-bar').forEach(bar => bar.addEventListener('click', () => { dateInput.value = bar.dataset.value; hourSelect.value = 'all'; refresh(); }));
+      renderList('users', data.users);
+      renderList('apps', data.apps);
+      renderList('appWindows', data.appWindows);
       renderList('domains', data.domains);
       renderList('pages', data.pages);
+      renderTimeline('appTimeline', data.appTimeline, 'app');
+      renderTimeline('pageTimeline', data.pageTimeline, 'page');
     };
 
     dateInput.addEventListener('change', refresh);

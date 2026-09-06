@@ -71,6 +71,63 @@ public sealed class BrowserTimeStore
         UpdateSession(id, null, endedAt);
     }
 
+    public string StartAppSession(
+        string userName,
+        string processName,
+        string appName,
+        string? windowTitle,
+        DateTimeOffset at)
+    {
+        lock (gate)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            var startedAt = at.ToUnixTimeSeconds();
+            Execute(
+                """
+                INSERT INTO app_sessions
+                (id, user_name, process_name, app_name, window_title, started_at, ended_at, duration_seconds)
+                VALUES ($id, $userName, $processName, $appName, $windowTitle, $startedAt, $startedAt, 0)
+                """,
+                command =>
+                {
+                    command.Parameters.AddWithValue("$id", id);
+                    command.Parameters.AddWithValue("$userName", userName);
+                    command.Parameters.AddWithValue("$processName", processName);
+                    command.Parameters.AddWithValue("$appName", appName);
+                    command.Parameters.AddWithValue("$windowTitle", windowTitle ?? "");
+                    command.Parameters.AddWithValue("$startedAt", startedAt);
+                });
+            return id;
+        }
+    }
+
+    public void UpdateAppSession(string id, string? windowTitle, DateTimeOffset endedAt)
+    {
+        lock (gate)
+        {
+            var timestamp = endedAt.ToUnixTimeSeconds();
+            Execute(
+                """
+                UPDATE app_sessions
+                SET window_title = CASE WHEN $windowTitle = '' THEN window_title ELSE $windowTitle END,
+                    ended_at = $endedAt,
+                    duration_seconds = MAX(0, CAST($endedAt - started_at AS INTEGER))
+                WHERE id = $id
+                """,
+                command =>
+                {
+                    command.Parameters.AddWithValue("$windowTitle", windowTitle ?? "");
+                    command.Parameters.AddWithValue("$endedAt", timestamp);
+                    command.Parameters.AddWithValue("$id", id);
+                });
+        }
+    }
+
+    public void CloseAppSession(string id, DateTimeOffset endedAt)
+    {
+        UpdateAppSession(id, null, endedAt);
+    }
+
     public TodaySummary TodaySummary()
     {
         var start = new DateTimeOffset(DateTimeOffset.Now.Date);
@@ -95,6 +152,10 @@ public sealed class BrowserTimeStore
             {
                 command.Parameters.AddWithValue("$cutoff", cutoff);
             });
+            Execute("DELETE FROM app_sessions WHERE ended_at < $cutoff", command =>
+            {
+                command.Parameters.AddWithValue("$cutoff", cutoff);
+            });
         }
     }
 
@@ -104,6 +165,52 @@ public sealed class BrowserTimeStore
         var endSeconds = end.ToUnixTimeSeconds();
         var total = QueryInt(
             OverlapSql("SELECT COALESCE(SUM({0}), 0) FROM page_sessions WHERE ended_at > $start AND started_at < $end"),
+            startSeconds,
+            endSeconds);
+        var appTotal = QueryInt(
+            OverlapSql("SELECT COALESCE(SUM({0}), 0) FROM app_sessions WHERE ended_at > $start AND started_at < $end"),
+            startSeconds,
+            endSeconds);
+        var users = QueryItems(
+            OverlapSql(
+                """
+                SELECT user_name, NULL, COALESCE(SUM({0}), 0) AS total
+                FROM app_sessions
+                WHERE ended_at > $start AND started_at < $end
+                GROUP BY user_name
+                HAVING total > 0
+                ORDER BY total DESC
+                LIMIT 10
+                """),
+            startSeconds,
+            endSeconds);
+        var apps = QueryItems(
+            OverlapSql(
+                """
+                SELECT COALESCE(NULLIF(app_name, ''), process_name), NULL, COALESCE(SUM({0}), 0) AS total
+                FROM app_sessions
+                WHERE ended_at > $start AND started_at < $end
+                GROUP BY COALESCE(NULLIF(app_name, ''), process_name)
+                HAVING total > 0
+                ORDER BY total DESC
+                LIMIT 10
+                """),
+            startSeconds,
+            endSeconds);
+        var appWindows = QueryItems(
+            OverlapSql(
+                """
+                SELECT
+                    COALESCE(NULLIF(window_title, ''), COALESCE(NULLIF(app_name, ''), process_name)),
+                    NULL,
+                    COALESCE(SUM({0}), 0) AS total
+                FROM app_sessions
+                WHERE ended_at > $start AND started_at < $end
+                GROUP BY process_name, COALESCE(NULLIF(window_title, ''), COALESCE(NULLIF(app_name, ''), process_name))
+                HAVING total > 0
+                ORDER BY total DESC
+                LIMIT 10
+                """),
             startSeconds,
             endSeconds);
         var domains = QueryItems(
@@ -132,13 +239,56 @@ public sealed class BrowserTimeStore
                 """),
             startSeconds,
             endSeconds);
+        var appTimeline = QueryTimelineItems(
+            OverlapSql(
+                """
+                SELECT
+                    COALESCE(NULLIF(app_name, ''), process_name),
+                    NULL,
+                    CASE
+                        WHEN NULLIF(window_title, '') IS NULL THEN user_name
+                        ELSE user_name || ' - ' || window_title
+                    END,
+                    CAST({0} AS INTEGER) AS seconds,
+                    MAX(started_at, $start) AS window_started_at,
+                    MIN(ended_at, $end) AS window_ended_at
+                FROM app_sessions
+                WHERE ended_at > $start AND started_at < $end
+                ORDER BY window_started_at DESC
+                LIMIT 50
+                """),
+            startSeconds,
+            endSeconds);
+        var pageTimeline = QueryTimelineItems(
+            OverlapSql(
+                """
+                SELECT
+                    COALESCE(NULLIF(title, ''), url),
+                    url,
+                    browser,
+                    CAST({0} AS INTEGER) AS seconds,
+                    MAX(started_at, $start) AS window_started_at,
+                    MIN(ended_at, $end) AS window_ended_at
+                FROM page_sessions
+                WHERE ended_at > $start AND started_at < $end AND url != ''
+                ORDER BY window_started_at DESC
+                LIMIT 50
+                """),
+            startSeconds,
+            endSeconds);
         var colorDomains = ColorDomainsUnlocked();
         var topDomainLabels = colorDomains.Select(item => item.Label).ToArray();
 
         return new TodaySummary(
             total,
+            appTotal,
+            users,
+            apps,
+            appWindows,
             domains,
             pages,
+            appTimeline,
+            pageTimeline,
             colorDomains,
             HourlyBucketsUnlocked(start, topDomainLabels),
             DayBucketsUnlocked(topDomainLabels),
@@ -255,6 +405,19 @@ public sealed class BrowserTimeStore
                 );
                 CREATE INDEX IF NOT EXISTS idx_page_sessions_started_at ON page_sessions(started_at);
                 CREATE INDEX IF NOT EXISTS idx_page_sessions_domain ON page_sessions(domain);
+                CREATE TABLE IF NOT EXISTS app_sessions (
+                    id TEXT PRIMARY KEY,
+                    user_name TEXT NOT NULL,
+                    process_name TEXT NOT NULL,
+                    app_name TEXT NOT NULL,
+                    window_title TEXT,
+                    started_at INTEGER NOT NULL,
+                    ended_at INTEGER NOT NULL,
+                    duration_seconds INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS idx_app_sessions_started_at ON app_sessions(started_at);
+                CREATE INDEX IF NOT EXISTS idx_app_sessions_process_name ON app_sessions(process_name);
+                CREATE INDEX IF NOT EXISTS idx_app_sessions_user_name ON app_sessions(user_name);
                 """,
                 _ => { });
         }
@@ -295,6 +458,29 @@ public sealed class BrowserTimeStore
                 reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.GetInt32(2)));
+        }
+        return items;
+    }
+
+    private IReadOnlyList<TimelineItem> QueryTimelineItems(string sql, long start, long end)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("$start", start);
+        command.Parameters.AddWithValue("$end", end);
+        using var reader = command.ExecuteReader();
+
+        var items = new List<TimelineItem>();
+        while (reader.Read())
+        {
+            items.Add(new TimelineItem(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetInt64(4),
+                reader.GetInt64(5)));
         }
         return items;
     }

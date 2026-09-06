@@ -9,6 +9,7 @@ builder.Services.AddWindowsService(options =>
 
 builder.Services.AddSingleton<BrowserTimeStore>();
 builder.Services.AddSingleton<EventIngestor>();
+builder.Services.AddSingleton<AppEventIngestor>();
 builder.Services.AddSingleton<LocalDashboardServer>();
 builder.Services.AddHostedService<Worker>();
 
