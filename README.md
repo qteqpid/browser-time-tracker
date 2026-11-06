@@ -246,6 +246,98 @@ Windows 版采用 Windows Service、系统托盘 UI 和 Chrome/Edge 扩展实现
 windows/README.md
 ```
 
+### Windows 安装用法
+
+建议把源码包解压到一个固定、简单、没有中文和空格的目录，例如：
+
+```text
+D:\Tools\browser-time-tracker-windows
+```
+
+安装前先确认 Windows 机器已安装 .NET 8 SDK：
+
+```powershell
+dotnet --list-sdks
+```
+
+然后用管理员权限打开 PowerShell 或 Windows Terminal，进入 `windows` 目录：
+
+```powershell
+cd D:\Tools\browser-time-tracker-windows\windows
+```
+
+推荐直接运行：
+
+```powershell
+.\install.cmd
+```
+
+`install.cmd` 会用 `-ExecutionPolicy Bypass` 启动 PowerShell，只影响这一次安装进程，通常可以避开 “禁止运行脚本” 的报错。
+
+如果你想直接运行 PowerShell 脚本，先在当前管理员 PowerShell 窗口里临时放行脚本执行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\install.ps1
+```
+
+安装脚本会构建并安装 Service / Tray，并询问是否配置开机邮件通知。选择配置时会收集：
+
+- SMTP host，163 邮箱默认是 `smtp.163.com`。
+- SMTP port，默认是 `25`。
+- 是否启用 SSL/TLS，默认否。
+- 发件邮箱。
+- SMTP 用户名，通常也是发件邮箱。
+- SMTP 授权码，不是邮箱登录密码。
+- 收件邮箱。
+
+这些信息会保存到：
+
+```text
+%LOCALAPPDATA%\BrowserTimeTracker\email_settings.json
+```
+
+邮件通知会在这些场景触发：
+
+- 用户登录桌面后 Tray 启动。
+- Windows 从锁屏解锁回到桌面。
+- Windows 从睡眠恢复。
+
+解锁和睡眠恢复可能在同一次回到桌面时同时触发；程序会做 45 秒内去重，避免连续发两封。
+
+并把程序安装到：
+
+```text
+C:\Program Files\BrowserTimeTracker
+```
+
+安装完成后，在 Chrome 或 Edge 里加载这个扩展目录：
+
+```text
+D:\Tools\browser-time-tracker-windows\windows\browser-extension
+```
+
+本机 Dashboard：
+
+```text
+http://127.0.0.1:38888/dashboard
+```
+
+如果 PowerShell 报 `PSSecurityException` 或 `running scripts is disabled on this system`，重新打开管理员 PowerShell 后执行：
+
+```powershell
+cd D:\Tools\browser-time-tracker-windows\windows
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\install.ps1
+```
+
+也可以直接在管理员 CMD 中运行下面命令，绕过 `.ps1` 启动限制：
+
+```cmd
+cd /d D:\Tools\browser-time-tracker-windows\windows
+install.cmd
+```
+
 ## 登录后自动启动
 
 当前 DMG 安装后需要用户首次手动打开应用。打开后应用会常驻菜单栏。

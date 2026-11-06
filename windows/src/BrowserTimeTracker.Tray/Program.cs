@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32;
 
 namespace BrowserTimeTracker.Tray;
 
@@ -36,6 +37,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly System.Windows.Forms.Timer screenshotTimer;
     private readonly ScreenshotViewerServer screenshotViewerServer;
     private readonly EmailNotifier emailNotifier;
+    private DateTimeOffset lastSessionEmailAt = DateTimeOffset.MinValue;
     private readonly HttpClient httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(2)
@@ -101,6 +103,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         screenshotTimer.Tick += (_, _) => CaptureScreenshot();
         screenshotTimer.Start();
 
+        SystemEvents.SessionSwitch += OnSessionSwitch;
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+
         _ = RefreshStatus();
         _ = TrackForegroundApp();
         _ = SendStartupEmailNotification();
@@ -111,6 +116,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         healthTimer.Stop();
         activityTimer.Stop();
         screenshotTimer.Stop();
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         screenshotViewerServer.Stop();
         try
         {
@@ -199,6 +206,45 @@ internal sealed class TrayApplicationContext : ApplicationContext
         try
         {
             await emailNotifier.SendStartupNotification(screenshotViewerServer.ShareText);
+        }
+        catch
+        {
+        }
+    }
+
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason == SessionSwitchReason.SessionUnlock)
+        {
+            QueueSessionEmailNotification("session unlocked");
+        }
+    }
+
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume)
+        {
+            QueueSessionEmailNotification("resumed from sleep");
+        }
+    }
+
+    private void QueueSessionEmailNotification(string reason)
+    {
+        var now = DateTimeOffset.Now;
+        if (now - lastSessionEmailAt < TimeSpan.FromSeconds(45))
+        {
+            return;
+        }
+
+        lastSessionEmailAt = now;
+        _ = SendSessionEmailNotification(reason);
+    }
+
+    private async Task SendSessionEmailNotification(string reason)
+    {
+        try
+        {
+            await emailNotifier.SendSessionNotification(reason, screenshotViewerServer.ShareText);
         }
         catch
         {

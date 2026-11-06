@@ -15,23 +15,37 @@ Windows 版采用三段式结构：
 在 Windows 机器上：
 
 1. 确认已安装 .NET 8 SDK。如果没有安装，按 [Install .NET 8 SDK](#install-net-8-sdk) 处理。
-2. 用管理员权限打开 PowerShell：右键 PowerShell 或 Windows Terminal，选择 `Run as administrator`。
-3. 进入本目录：
+2. 解压源码包到一个路径简单、没有中文和空格的目录，例如：
 
-   ```powershell
-   cd C:\Path\To\browser-time-tracker\windows
+   ```text
+   D:\Tools\browser-time-tracker-windows
    ```
 
-4. 如果 PowerShell 拦截本地脚本，先只对当前 PowerShell 会话临时放行：
+3. 用管理员权限打开 PowerShell：右键 PowerShell 或 Windows Terminal，选择 `Run as administrator`。
+4. 进入本目录：
 
    ```powershell
-   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+   cd D:\Tools\browser-time-tracker-windows\windows
    ```
 
-5. 构建并安装 Service / Tray：
+5. 推荐直接运行一键安装入口：
 
    ```powershell
-   .\scripts\install-windows.ps1 -Build
+   .\install.cmd
+   ```
+
+   `install.cmd` 会用 `-ExecutionPolicy Bypass` 启动 PowerShell，只影响这次安装进程。
+
+   如果你想直接运行 PowerShell 脚本，先只对当前 PowerShell 会话临时放行：
+
+   ```powershell
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+   ```
+
+   然后运行：
+
+   ```powershell
+   .\install.ps1
    ```
 
 6. 在 Chrome 或 Edge 中加载 `windows\browser-extension` 扩展。
@@ -97,13 +111,14 @@ PSSecurityException
 这是 Windows PowerShell 执行策略拦截本地 `.ps1` 脚本。推荐只对当前 PowerShell 窗口临时放行：
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 ```
 
 然后重新运行安装命令：
 
 ```powershell
-.\scripts\install-windows.ps1 -Build
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\install.ps1
 ```
 
 这个设置只影响当前 PowerShell 会话，关闭窗口后失效。
@@ -121,9 +136,9 @@ Run this script from an elevated Administrator PowerShell.
 请关闭当前窗口，右键 PowerShell 或 Windows Terminal，选择 `Run as administrator`，然后重新运行：
 
 ```powershell
-cd C:\Path\To\browser-time-tracker\windows
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\scripts\install-windows.ps1 -Build
+cd D:\Tools\browser-time-tracker-windows\windows
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\install.ps1
 ```
 
 ## Deliberately Removed Controls
@@ -168,17 +183,69 @@ dotnet publish .\src\BrowserTimeTracker.Tray\BrowserTimeTracker.Tray.csproj -c R
 
 ## Install
 
-以管理员 PowerShell 运行：
+### Recommended Source Install
+
+解压目录建议使用不带日期的固定路径：
+
+```text
+D:\Tools\browser-time-tracker-windows
+```
+
+以管理员 PowerShell 进入 `windows` 目录：
+
+```powershell
+cd D:\Tools\browser-time-tracker-windows\windows
+```
+
+推荐运行：
+
+```powershell
+.\install.cmd
+```
+
+如果 PowerShell 拦截 `.ps1` 脚本，或你想手动执行 PowerShell 安装入口：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\install.ps1
+```
+
+通过 `install.cmd` 启动时，`install.ps1` 会再次确认当前会话的 Execution Policy，然后调用详细安装脚本：
 
 ```powershell
 .\scripts\install-windows.ps1 -Build
 ```
 
-这个脚本会：
+### Direct Script Install
+
+也可以直接以管理员 PowerShell 运行底层安装脚本：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\scripts\install-windows.ps1 -Build
+```
+
+安装过程会打印每一步正在做什么，包括：
+
+- 当前 Windows 项目目录。
+- `C:\Program Files\BrowserTimeTracker` 安装目录。
+- Service / Tray publish 输出目录。
+- 是否停止已有 Service 和 Tray。
+- `email_settings.json` 的实际位置。
+- 是否配置开机邮件通知。
+- Service 安装和启动状态。
+- Tray 启动项注册位置。
+
+脚本会：
 
 - 先运行 `dotnet publish` 生成 Service 和 Tray 的 `.exe`。
 - 把 Service publish 目录复制到 `C:\Program Files\BrowserTimeTracker\Service`。
 - 把 Tray publish 目录复制到 `C:\Program Files\BrowserTimeTracker\Tray`。
+- 询问是否配置邮件通知；如果选择配置，会收集发件邮箱、收件邮箱和 SMTP 授权码，并保存到：
+  ```text
+  %LOCALAPPDATA%\BrowserTimeTracker\email_settings.json
+  ```
+- 邮件通知会在 Tray 启动、Windows 解锁、Windows 从睡眠恢复时触发；解锁和睡眠恢复在 45 秒内会去重，避免同一次回到桌面连发两封。
 - 安装并启动 `BrowserTimeTracker` Windows Service。
 - 设置 Service 失败后自动重启。
 - 把 Tray 注册到 `HKLM\Software\Microsoft\Windows\CurrentVersion\Run`，让用户登录后自动显示托盘。
@@ -191,6 +258,8 @@ dotnet publish .\src\BrowserTimeTracker.Tray\BrowserTimeTracker.Tray.csproj -c R
 ```
 
 重复运行同一个命令可用于更新安装。脚本会在复制新文件前停止已有 Service，然后重新配置并启动 Service。
+
+安装失败时，脚本会打印 `ERROR:` 日志，并指出失败步骤、错误消息和出错命令；非致命问题会打印 `WARNING:`。
 
 如果 publish 目录不在默认位置，可以显式传参：
 

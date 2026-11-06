@@ -19,6 +19,20 @@ internal sealed class EmailNotifier
 
     public async Task SendStartupNotification(string screenshotLink)
     {
+        await SendNotification("online", "Windows computer online.", screenshotLink, enforceCooldown: true);
+    }
+
+    public async Task SendSessionNotification(string reason, string screenshotLink)
+    {
+        await SendNotification(reason, "Windows computer activity detected.", screenshotLink, enforceCooldown: false);
+    }
+
+    private async Task SendNotification(
+        string reason,
+        string messageText,
+        string screenshotLink,
+        bool enforceCooldown)
+    {
         if (settings is not { Enabled: true } ||
             string.IsNullOrWhiteSpace(settings.SmtpHost) ||
             string.IsNullOrWhiteSpace(settings.From) ||
@@ -29,16 +43,18 @@ internal sealed class EmailNotifier
             return;
         }
 
-        if (!ShouldSend(settings.CooldownMinutes))
+        if (enforceCooldown && !ShouldSend(settings.CooldownMinutes))
         {
             return;
         }
 
         using var message = new MailMessage(settings.From, settings.To)
         {
-            Subject = $"Browser Time Tracker online - {Environment.MachineName}",
+            Subject = $"Browser Time Tracker {reason} - {Environment.MachineName}",
             Body = $"""
-            Windows computer online.
+            {messageText}
+
+            Event: {reason}
 
             Computer: {Environment.MachineName}
             User: {CurrentUserName()}
